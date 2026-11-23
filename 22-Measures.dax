@@ -1,0 +1,13 @@
+// UNEXECUTED DAX. Create each definition as a separate measure.
+
+Budget EGP = SUM(FactBudget[Budget_EGP])
+
+Actual EGP = SUM(FactActual[Actual_EGP])
+
+Opex Variance EGP = [Actual EGP] - [Budget EGP]
+
+Opex Variance Pct = DIVIDE([Opex Variance EGP], [Budget EGP])
+
+Budget Remaining EGP = [Budget EGP] - [Actual EGP]
+
+GL Entry Count = COUNTROWS(FactActual)

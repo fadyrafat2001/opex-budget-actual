@@ -1,0 +1,150 @@
+# Operating expense budget versus actual
+
+Status: synthetic source assets only, no executed Power BI report. Prepared with assistant support. Not prior independent work.
+
+## Business question
+Which department and expense line drives the monthly overspend without duplicating budget?
+
+## Data and model
+Budget: 27 unique month/department/account combinations. Actual: 54 GL entries, two per budget combination. This deliberate different grain tests duplication risk.
+
+## Relationships
+Each of DimMonth, DimDepartment, DimAccount filters BOTH fact tables, active 1:* single direction. Six relationships. No fact-to-fact join and no bidirectional filters.
+
+## Import and implementation
+Open the accompanying XLSX in Power BI Desktop using Get data > Excel > Transform Data, or use Queries.pq with the WorkbookPath parameter. Each commented query block is a separate query, not one script to paste wholesale. Load only the named data sheets. Set explicit data types; parse dates with en-US where applicable. Remove auto-created relationships, then create the specified ones. Add DAX measures individually and format ratios as percentages, money as EGP. Hide unused fact columns and use dimension fields for filters.
+
+## Report pages
+Overview: actual/budget/variance cards, month chart and department variance bars. Detail: department/account matrix with correct grand totals. QA: compare whole results and one department/month slice. Drill-through at department/account is supported by dimensions; GL-entry detail must not show repeated budget as additive.
+
+## Tests
+Expected_Results.json was independently calculated from these inputs in Python. M/DAX have NOT been executed. Match whole-dataset results and relevant filters before calling the report complete. Check each dimension key is unique and non-null; each fact key matches a dimension; required numeric inputs have no nulls or errors. No silent replacement of missing values with zero. Test slicers, clear-all, cross-highlighting, tooltip and drill-through, and confirm totals do not duplicate after relationships. Save PBIX and capture report + Model view; record Desktop version, refresh date and test results.
+
+## Limits
+Positive expense variance is adverse. Budget is a single fixed plan, not a forecast version. Month is a text period dimension, not a marked date table. No YTD/time-intelligence claims. Do not join monthly budgets to raw GL transactions or sum budget repeated per entry.
+
+## Sources for implementation
+https://learn.microsoft.com/en-us/power-bi/guidance/star-schema
+https://learn.microsoft.com/en-us/dax/sumx-function-dax
+
+## Field dictionary
+Month is period YYYY-MM. Department and Account are fictional category keys shared across both facts. Budget_EGP is the fixed planned monthly cost at month/department/account grain. Entry_ID uniquely identifies an actual general-ledger entry. Actual_EGP is that entry amount, not a monthly subtotal. Amounts are positive expenses in EGP.
+
+## Independent filtered acceptance tests
+{
+  "checks": "Unique fact keys, unique nonblank dimension keys and all fact-to-dimension matches passed in Python. Native relationships not tested.",
+  "filtered_results": {
+    "Finance": {
+      "budget": "99000",
+      "actual": "99870.0",
+      "variance": "870.0"
+    },
+    "Operations": {
+      "budget": "117000",
+      "actual": "120390.0",
+      "variance": "3390.0"
+    },
+    "Sales": {
+      "budget": "135000",
+      "actual": "141630.0",
+      "variance": "6630.0"
+    }
+  }
+}
+
+
+Month is period YYYY-MM. Department and Account are fictional category keys shared across both facts. Budget_EGP is the fixed planned monthly cost at month/department/account grain. Entry_ID uniquely identifies an actual general-ledger entry. Actual_EGP is that entry amount, not a monthly subtotal. Amounts are positive expenses in EGP.
+
+
+{
+  "budget_rows": 27,
+  "actual_rows": 54,
+  "budget_egp": 351000,
+  "actual_egp": 361890.0,
+  "adverse_variance_egp": 10890.0,
+  "variance_pct": 0.031025641025641027
+}
+
+{
+  "checks": "Unique fact keys, unique nonblank dimension keys and all fact-to-dimension matches passed in Python. Native relationships not tested.",
+  "filtered_results": {
+    "Finance": {
+      "budget": "99000",
+      "actual": "99870.0",
+      "variance": "870.0"
+    },
+    "Operations": {
+      "budget": "117000",
+      "actual": "120390.0",
+      "variance": "3390.0"
+    },
+    "Sales": {
+      "budget": "135000",
+      "actual": "141630.0",
+      "variance": "6630.0"
+    }
+  }
+}
+
+EXACT UNEXECUTED M SOURCE
+// UNEXECUTED M SOURCE. Create text parameter WorkbookPath with full local XLSX path.
+// Create this function as fxSheet; invoke it once per data sheet below.
+(sheetName as text) as table =>
+let
+    Source = Excel.Workbook(File.Contents(WorkbookPath), null, true),
+    Data = Source{[Item=sheetName, Kind="Sheet"]}[Data],
+    Headers = Table.PromoteHeaders(Data, [PromoteAllScalars=true])
+in
+    Headers
+
+// Separate query named FactBudget:
+let
+    Source = fxSheet("FactBudget"),
+    Typed = Table.TransformColumnTypes(Source, {{"Month", type text}, {"Department", type text}, {"Account", type text}, {"Budget_EGP", type number}}, "en-US")
+in
+    Typed
+
+// Separate query named FactActual:
+let
+    Source = fxSheet("FactActual"),
+    Typed = Table.TransformColumnTypes(Source, {{"Entry_ID", type text}, {"Month", type text}, {"Department", type text}, {"Account", type text}, {"Actual_EGP", type number}}, "en-US")
+in
+    Typed
+
+// Separate query named DimMonth:
+let
+    Source = fxSheet("DimMonth"),
+    Typed = Table.TransformColumnTypes(Source, {{"Month", type text}}, "en-US")
+in
+    Typed
+
+// Separate query named DimDepartment:
+let
+    Source = fxSheet("DimDepartment"),
+    Typed = Table.TransformColumnTypes(Source, {{"Department", type text}}, "en-US")
+in
+    Typed
+
+// Separate query named DimAccount:
+let
+    Source = fxSheet("DimAccount"),
+    Typed = Table.TransformColumnTypes(Source, {{"Account", type text}}, "en-US")
+in
+    Typed
+
+
+
+EXACT UNEXECUTED DAX SOURCE
+// UNEXECUTED DAX. Create each definition as a separate measure.
+
+Budget EGP = SUM(FactBudget[Budget_EGP])
+
+Actual EGP = SUM(FactActual[Actual_EGP])
+
+Opex Variance EGP = [Actual EGP] - [Budget EGP]
+
+Opex Variance Pct = DIVIDE([Opex Variance EGP], [Budget EGP])
+
+Budget Remaining EGP = [Budget EGP] - [Actual EGP]
+
+GL Entry Count = COUNTROWS(FactActual)
